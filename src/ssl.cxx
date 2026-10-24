@@ -76,14 +76,16 @@ SSLMod::SSLMod(evhttp* http, const char* extip, bool enable)
 
 #ifdef HAVE_LIBSSL
 
-	X509_NAME* name;
 	unsigned char sha256_buf[32];
 	unsigned int i;
 
 	std::unique_ptr<X509, std::function<void(X509*)>>
 		x509{X509_new(), X509_free};
 
-	if (!x509)
+	std::unique_ptr<X509_NAME, std::function<void(X509_NAME*)>>
+		name{X509_NAME_new(), X509_NAME_free};
+
+	if (!x509 || !name)
 		throw std::bad_alloc();
 
 #ifdef HAVE_OPENSSL3
@@ -128,18 +130,18 @@ SSLMod::SSLMod(evhttp* http, const char* extip, bool enable)
 	X509_gmtime_adj(X509_getm_notBefore(x509.get()), 0);
 	X509_gmtime_adj(X509_getm_notAfter(x509.get()), 60*60*24);
 
-	/* Set subject & issuer */
-	name = X509_get_subject_name(x509.get());
-
-	X509_NAME_add_entry_by_txt(name, "O", MBSTRING_ASC,
+	/* Set subject & issuer; OpenSSL 4 returns the subject name as const,
+	 * so build a fresh name instead of modifying it in place */
+	X509_NAME_add_entry_by_txt(name.get(), "O", MBSTRING_ASC,
 			static_cast<const unsigned char*>(
 				static_cast<const void*>("pshs")), -1, -1, 0);
-	X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_ASC,
+	X509_NAME_add_entry_by_txt(name.get(), "CN", MBSTRING_ASC,
 			static_cast<const unsigned char*>(
 				static_cast<const void*>(extip)), -1, -1, 0);
 
+	X509_set_subject_name(x509.get(), name.get());
 	/* Self-signed => issuer = subject */
-	X509_set_issuer_name(x509.get(), name);
+	X509_set_issuer_name(x509.get(), name.get());
 
 	if (!X509_sign(x509.get(), pkey.get(), EVP_sha512()))
 		throw std::runtime_error("X509_sign() failed");
