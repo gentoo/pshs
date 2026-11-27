@@ -250,6 +250,14 @@ void handle_file(struct evhttp_request* req, void* data)
 							cb_data->ct->guess(fd)))
 					throw std::bad_alloc();
 
+				/* libevent only adds Content-Length when it sends a body,
+				 * so HEAD replies would lack it.  Clients such as BMC
+				 * virtual media use HEAD to learn the image size. */
+				const std::string content_length(std::to_string(last - first + 1));
+				if (evhttp_add_header(headers, "Content-Length",
+							content_length.c_str()))
+					throw std::bad_alloc();
+
 				/* Send the file. */
 #if 0 /* breaks ssl support */
 				evbuffer_set_flags(buf, EVBUFFER_FLAG_DRAINS_TO_FD);
