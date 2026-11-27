@@ -5,11 +5,13 @@
 
 #include "config.h"
 
+#include <algorithm>
 #include <functional>
 #include <iostream>
 #include <memory>
 #include <sstream>
 #include <stdexcept>
+#include <string>
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -139,6 +141,15 @@ void handle_file(struct evhttp_request* req, void* data)
 
 	/* Report connection being closed. */
 	evhttp_connection_set_closecb(conn, handle_close, 0);
+
+	/* Collapse repeated slashes (//file -> /file).  Done before decoding,
+	 * so that encoded slashes (%2F, used by the index for absolute paths)
+	 * are preserved. */
+	std::string npath{vpath};
+	npath.erase(std::unique(npath.begin(), npath.end(),
+				[](char a, char b) { return (a == '/') && (b == '/'); }),
+			npath.end());
+	vpath = npath.c_str();
 
 	/* Chop the leading slash. */
 	assert(vpath[0] == '/');
